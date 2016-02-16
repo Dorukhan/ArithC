@@ -1,0 +1,102 @@
+;;Dorukhan Basoglu 112200040 CMPE 314 - ASSINGMENT 2
+
+#lang plai-typed
+
+;define drk
+;main function for Assignment2
+
+(define-type drk
+  [drk-num (n : number)]
+  [drk-add (nml : drk) (nmr : drk)]
+  [drk-mult (nml : drk) (nmr : drk)]
+  [drk-sub (nml : drk) (nmr : drk)]
+  [drk-div (nml : drk) (nmr : drk)])
+
+;; CORE LANGUAGE
+;;the core language
+;; eval drk -> number
+
+
+(define (eval [expr : drk])
+  (type-case drk expr
+    [drk-num (n) n]
+    [drk-add (nml nmr) (+ (eval nml) (eval nmr))]    ;drk-add add function
+    [drk-mult (nml nmr) (* (eval nml) (eval nmr))]   ;drk-mult mult function
+    [drk-sub (nml nmr) (- (eval nml) (eval nmr))]    ;drk-sub sub function
+    [drk-div (nml nmr) (/ (eval nml) (eval nmr))]))  ;drk-div div function
+
+(test (eval (drk-num 8))  8)
+(test (eval (drk-num 5))  5)
+(test (eval (drk-add (drk-num 3) (drk-num 4)))  8)
+(test (eval (drk-sub (drk-num 5) (drk-num 2)))  3)
+(test (eval (drk-div (drk-num 8) (drk-num 1)))  8)
+(test (eval (drk-add (drk-add (drk-num 3) (drk-num 4)) (drk-num 35)))  42)
+(test (eval (drk-mult (drk-add (drk-num 3) (drk-num 4)) (drk-num 5)))  60)
+(test (eval (drk-add (drk-div (drk-num 20) (drk-num 5)) (drk-num 35)))  39)
+
+;; parse s-expression -> drk
+;; convert a quoted s expression into the equivalent drk form
+
+(define (parse [s : s-expression]) : drk
+  (cond
+    [(s-exp-number? s) (drk-num (s-exp->number s))]
+    [(s-exp-list? s)
+     (let ([sl (s-exp->list s)])
+       (case (s-exp->symbol (first sl))
+         [(+) (drk-add (parse (second sl)) (parse (third sl)))]
+         [(*) (drk-mult (parse (second sl)) (parse (third sl)))]
+         [(-) (drk-sub (parse (second sl)) (parse (third sl)))]
+         [(/) (drk-div (parse (second sl)) (parse (third sl)))]
+         [else (error 'parse "invalid list input")]))]
+    [else (error 'parse "invalid input")]))
+
+
+(test (parse '8) (drk-num 8))
+(test (parse '2) (drk-num 2))
+(test (parse '(+ 3 4)) (drk-add (drk-num 3) (drk-num 4)))
+(test (parse '(/ 20 4)) (drk-div (drk-num 20) (drk-num 4)))
+(test (parse '(* 2 8)) (drk-mult (drk-num 2) (drk-num 8)))
+(test (parse '(+ (+ 3 4) 35)) (drk-add (drk-add (drk-num 3) (drk-num 4)) (drk-num 35)))
+(test (parse '(+ (- 3 4) 35)) (drk-add (drk-sub (drk-num 3) (drk-num 1)) (drk-num 35)))
+(test (parse '(/ (* 3 4) 6)) (drk-div (drk-mult (drk-num 3) (drk-num 4)) (drk-num 6)))
+
+; SUGAR LANGUAGE
+;;the sugary language
+
+(define-type drks
+  [num-drks (n : number)]
+  [plus-drks (l : drks) (r : drks)]
+  [mult-drks (l : drks) (r : drks)]
+  [bmin-drks (l : drks) (r : drks)] ;;can be expressed with plus and mult
+  [umin-drks (r : drks)]                      ;;can be expressed with plus and mult
+  [div-drks  (l : drks) (r : drks)])
+
+;;Desugar method
+  
+  (define (desugar [sugar : drks]) : drk
+  (type-case drks sugar
+    [num-drks (n) (drk-num n)]
+    [plus-drks (l r) (drk-add
+                      (desugar l)
+                      (desugar r))]
+    [mult-drks (l r) (drk-add
+                      (desugar l)
+                      (desugar r))]
+    [bmin-drks (l r) (drk-add       ;;translates binary minus to addition of the neg of the second argument
+                      (desugar l)
+                      (drk-add
+                       (drk-num -1)
+                       (desugar r)))]
+    [umin-drks (v) (desugar (bmin-drks (num-drks 0) v))] ;;unary minus translates to subtracting the argument from 0
+    [div-drks (l r) (drk-div      ;;in the core language
+                     (desugar l) 
+                     (desugar r))]))
+
+    ;;testing desugar
+    
+(test (desugar (num-drks 9)) (drk-num 9))
+(test (desugar (plus-drks (num-drks 8) (umin-drks (num-drks 5))))
+      (drk-add (drk-num 8) (drk-add (drk-num 0) (drk-mult (drk-num -1) (drk-num 5)))))
+(test (desugar (div-drks (num-drks 4) (num-drks 2)))
+      (drk-div (drk-num 4) (drk-num 2)))
+    
