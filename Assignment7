@@ -1,0 +1,885 @@
+;;Dorukhan Basoglu 112200040 CMPE 314 - ASSINGMENT 7
+
+#lang plai-typed
+
+;define drk
+;Grammar of surface language
+;; drk -> number
+;; drk -> drk+drk
+;; drk -> drk*drk
+;; drk -> (drk)
+;; Alphabet: [+, *, (), **, -, number]
+
+;; drk is a typed defined as follows,
+;; drk = <number>
+;; drk = (add <drk> <drk>)
+;;       (mult <drk> <drk>)
+;;       (sub <drk> <drk>)
+;;       (div <drk> <drk>)
+;;       (exp <drk> <drk>)
+
+(define-type drk
+  [drk-num (n : number)]
+  [drk-add (nml : drk) (nmr : drk)]
+  [drk-mult (nml : drk) (nmr : drk)]
+  [drk-sub (nml : drk) (nmr : drk)]
+  [drk-div (nml : drk) (nmr : drk)]
+  [drk-exp (nml : drk) (nmr : drk)])
+
+; Grammar for drkC
+;; drkC -> number
+;; drkC -> symbol
+;;if-greater-than-zero -> <drk> <drk> <drk>
+;;appC -> <drk> <drk>
+
+(define-type drkC
+  [drkC-num (n : number)]
+  [drkC-id (s : symbol)]
+  [if-greater-than-zero (pred : drkC)(trueState : drkC)(falseState : drkC)]
+  [appC (fun : symbol) (arg : drkC)]
+  [binaryOpC (op : symbol) (l : drkC) (r : drkC)])
+
+;; exponentiation function
+(define(** u t)
+  (cond
+    ((= u 1) t)
+    (else
+     (* t(**(sub1 u) t)))))
+
+;;Tests
+(drk-num 7)
+(drk-add (drk-num 3) (drk-num 4))
+(drk-mult (drk-num 4) (drk-num 3))
+(drk-add (drk-add (drk-num 3) (drk-num 4)) (drk-num 30))
+(drk-mult (drk-add (drk-num 3) (drk-num 4)) (drk-num 5))
+
+
+;;-----------------------------------------------------------------------------------------------------------------------------------------------------
+
+;; CORE LANGUAGE
+;;the core language
+;; eval drk -> number
+;; evaluate an drk expression
+
+(define (eval [expr : drk])
+  (type-case drk expr
+    [drk-num (n) n]
+    [drk-add (nml nmr) (+ (eval nml) (eval nmr))]    ;drk-add add function
+    [drk-mult (nml nmr) (* (eval nml) (eval nmr))]   ;drk-mult mult function
+    [drk-sub (nml nmr) (- (eval nml) (eval nmr))]    ;drk-sub sub function
+    [drk-div (nml nmr) (/ (eval nml) (eval nmr))]  ;drk-div ))  ;drk-div div function
+    [drk-exp (nml nmr) (** (eval nml) (eval nmr))])) ;drk-exp ))  ;drk-exp exp function
+
+
+;;testing core
+;; (drk-num 7) -> 7
+;; (drk-add (drk-num 3) (drk-num 4)) -> 7
+;; (drk-div (drk-num 5) (drk-num 5)) -> 1
+;; (drk-mult (drk-num 4) (drk-num 3)) -> 12
+;; (drk-add (drk-add (drk-num 3) (drk-num 4)) (drk-num 30)) -> 37
+;; (drk-mult (drk-add (drk-num 3) (drk-num 4)) (drk-num 5)) -> 60
+
+
+(test (eval (drk-num 7))  7)
+(test (eval (drk-num 5))  5)
+(test (eval (drk-add (drk-num 3) (drk-num 4)))  7)
+(test (eval (drk-sub (drk-num 5) (drk-num 2)))  3)
+(test (eval (drk-div (drk-num 8) (drk-num 1)))  8)
+(test (eval (drk-add (drk-add (drk-num 3) (drk-num 4)) (drk-num 35)))  42)
+(test (eval (drk-mult (drk-add (drk-num 3) (drk-num 4)) (drk-num 5)))  35)
+(test (eval (drk-add (drk-div (drk-num 20) (drk-num 5)) (drk-num 35)))  39)
+
+;; parse s-expression -> drk
+;; convert a quoted s expression into the equivalent drk form
+
+(define (parse [s : s-expression]) : drk
+  (cond
+    [(s-exp-number? s) (drk-num (s-exp->number s))]
+    [(s-exp-list? s)
+     (let ([sl (s-exp->list s)])
+       (case (s-exp->symbol (first sl))
+         [(+) (drk-add (parse (second sl)) (parse (third sl)))]
+         [(*) (drk-mult (parse (second sl)) (parse (third sl)))]
+         [(-) (drk-sub (parse (second sl)) (parse (third sl)))]
+         [(/) (drk-div (parse (second sl)) (parse (third sl)))]
+         [else (error 'parse "invalid list input")]))]
+    [else (error 'parse "invalid input")]))
+
+;;testing parse
+;; '7 -> (drk-num 7)
+;; '(+ 3 4) -> (drk-add (drk-num 3) (drk-num 4))
+;; '(+ (+ 3 4) 35) -> (drk-add (drk-add (drk-num 3) (drk-num 4)) (drk-num 35))
+
+(test (parse '7) (drk-num 7))
+(test (parse '2) (drk-num 2))
+(test (parse '(+ 3 4)) (drk-add (drk-num 3) (drk-num 4)))
+(test (parse '(/ 20 4)) (drk-div (drk-num 20) (drk-num 4)))
+(test (parse '(* 2 8)) (drk-mult (drk-num 2) (drk-num 8)))
+(test (parse '(+ (+ 3 4) 35)) (drk-add (drk-add (drk-num 3) (drk-num 4)) (drk-num 35)))
+(test (parse '(+ (- 3 4) 35)) (drk-add (drk-sub (drk-num 3) (drk-num 4)) (drk-num 35)))
+(test (parse '(/ (* 3 4) 6)) (drk-div (drk-mult (drk-num 3) (drk-num 4)) (drk-num 6)))
+
+;;-----------------------------------------------------------------------------------------------------------------------------------------------------
+
+;; PARSER FOR PREFIX
+;; parse s-expression -> drk
+;; convert a quoted s expression into the equivalent drk form
+;; examples
+;; '7 -> (drk-num 7)
+;; '(+ 3 4) -> (drk-add (drk-num 3) (drk-num 4))
+;; '(+ (+ 3 4) 35) -> (drk-add (drk-add (drk-num 3) (drk-num 4)) (drk-num 35))
+
+(define (parse-prefix [s : s-expression]) : drk
+  (cond
+    [(s-exp-number? s) (drk-num (s-exp->number s))]
+    [(s-exp-list? s)
+     (let ([sl (s-exp->list s)])
+       (case (s-exp->symbol (first sl))
+         [(+) (drk-add (parse-prefix (second sl)) (parse-prefix (third sl)))]
+         [(*) (drk-mult (parse-prefix (second sl)) (parse-prefix (third sl)))]
+         [(-) (drk-sub (parse-prefix (second sl)) (parse-prefix (third sl)))]
+         [(**) (drk-exp (parse-prefix (second sl)) (parse-prefix (third sl)))]
+         [else (error 'parse-prefix "invalid list input")]))]
+    [else (error 'parse-prefix "invalid input")]))
+
+
+(test (parse-prefix '7) (drk-num 7))
+(test (parse-prefix '2) (drk-num 2))
+(test (parse-prefix '(+ 3 4)) (drk-add (drk-num 3) (drk-num 4)))
+(test (parse-prefix '(- 20 4)) (drk-sub (drk-num 20) (drk-num 4)))
+(test (parse-prefix '(* 2 8)) (drk-mult (drk-num 2) (drk-num 8)))
+(test (parse-prefix '(+ (+ 3 4) 35)) (drk-add (drk-add (drk-num 3) (drk-num 4)) (drk-num 35)))
+(test (parse-prefix '(+ (- 3 1) 35)) (drk-add (drk-sub (drk-num 3) (drk-num 1)) (drk-num 35)))
+(test (parse-prefix '(- (* 3 4) 6)) (drk-sub (drk-mult (drk-num 3) (drk-num 4)) (drk-num 6)))
+
+
+;; PARSER FOR INFIX
+;; parse s-expression -> drk
+;; convert a quoted s expression into the equivalent drk form
+;; examples
+;; '7 -> (drk-num 7)
+;; '(3 + 4) -> (drk-add (drk-num 3) (drk-num 4))
+;; '(2 + 3) -> (drk-add (drk-num 2) (drk-num 3))
+;; '(2 - (3 * 4)) (drk-sub (drk-num 2)(drk-mult (drk-num 3)(drk-num 4))))
+;; '((3 + 4) + 35) -> (drk-add (drk-add (drk-num 3) (drk-num 4)) (drk-num 35))
+;; '((2 + 3) ** (3 * 4))) (drk-exp (drk-add (drk-num 2)(drk-num 3))(drk-mult (drk-num 3)(drk-num 4))))
+
+(define (parse-infix [s : s-expression]) : drk
+  (cond
+    [(s-exp-number? s) (drk-num (s-exp->number s))]
+    [(s-exp-list? s)
+     (let ([s1 (s-exp->list s)])
+       (case (s-exp->symbol (second s1))
+         [(+) (drk-add (parse-infix (first s1)) (parse-infix (third s1)))]
+         [(*) (drk-mult (parse-infix (first s1)) (parse-infix (third s1)))]
+         [(-) (drk-sub (parse-infix (first s1)) (parse-infix (third s1)))]
+         [(**) (drk-exp (parse-infix (first s1)) (parse-infix (third s1)))]
+         [else (error 'parse-infix "invalid list input")]))]
+    [else (error 'parse-infix "invalid input")]))
+
+;;Tests
+(test (parse-infix '2) (drk-num 2))
+(test (parse-infix '5) (drk-num 5))
+(test (parse-infix '6) (drk-num 6))
+(test (parse-infix '7) (drk-num 7))
+(test (parse-infix '8) (drk-num 8))
+(test (parse-infix '(3 + 4)) (drk-add (drk-num 3) (drk-num 4)))
+(test (parse-infix '(2 - 5)) (drk-sub (drk-num 2) (drk-num 5)))
+(test (parse-infix '(6 * 7)) (drk-mult (drk-num 6) (drk-num 7)))
+(test (parse-infix '(2 ** 3)) (drk-exp (drk-num 2) (drk-num 3)))
+(test (parse-infix '(3 + 4)) (drk-add (drk-num 3) (drk-num 4)))
+(test (parse-infix '(2 - (3 * 4))) (drk-sub (drk-num 2) (drk-mult (drk-num 3)(drk-num 4))))
+(test (parse-infix '((6 * 7) + 35)) (drk-add (drk-mult (drk-num 6)(drk-num 7))(drk-num 35)))
+(test (parse-infix '((1 - 2) * 5)) (drk-mult (drk-sub (drk-num 1)(drk-num 2))(drk-num 5)))
+(test (parse-infix '((2 ** 3) - 5)) (drk-sub (drk-exp (drk-num 2)(drk-num 3))(drk-num 5)))
+(test (parse-infix '((3 + 4) - 5)) (drk-sub (drk-add (drk-num 3)(drk-num 4))(drk-num 5)))
+(test (parse-infix '((10 - 9) ** (3 * 4))) (drk-exp (drk-sub (drk-num 10)(drk-num 9))(drk-mult (drk-num 3)(drk-num 4))))
+(test (parse-infix '((2 + 3) + (3 * 4))) (drk-add (drk-add (drk-num 2)(drk-num 3))(drk-mult (drk-num 3)(drk-num 4))))
+(test (parse-infix '((5 + 5) - (3 + 4))) (drk-sub (drk-add (drk-num 5)(drk-num 5))(drk-add (drk-num 3)(drk-num 4))))
+(test (parse-infix '((1 + 1) * (5 * 6))) (drk-mult (drk-add (drk-num 1)(drk-num 1))(drk-mult (drk-num 5)(drk-num 6))))
+(test (parse-infix '((2 + 3) ** (3 * 4))) (drk-exp (drk-add (drk-num 2)(drk-num 3))(drk-mult (drk-num 3)(drk-num 4))))
+
+;;output-reverse-polish drk -> list of s-expression
+;;output the drk as the reverse polish commands needed to evaluate it
+;; template
+;;(define (output-reverse-polish [expr : drk])
+;; (type-case drk expr
+;; [drk-num (n) ..]
+;; [drk-add (nml nmr)(... (output-reverse-polish nml)(output-reverse-polish nmr))...]
+;; [drk-mult (nml nmr)(... (output-reverse-polish nml)(output-reverse-polish nmr))...]
+;; [drk-sub (nml nmr)(... (output-reverse-polish nml)(output-reverse-polish nmr))...]
+;; [drk-exp (nml nmr)(... (output-reverse-polish nml)(output-reverse-polish nmr))...]
+
+;; examples
+;; (drk-num 7) -> '(7)
+;; (drk-add (drk-num 3) (drk-num 4)) -> '(4 3 +)
+;; (drk-mult (drk-num 3) (drk-num 4)) -> '(4 3 *)
+;; (drk-add (drk-mult (drk-num 3) (drk-num 4)) (drk-num 9)) -> '(3 4 * 9 +)
+;; (drk-mult (drk-num 3) (drk-add (drk-num 4) (drk-num 9))) -> '(3 4 9 + *)
+
+(define (output-reverse-polish [expr : drk])
+  (type-case drk expr
+    [drk-num (n) (list (number->s-exp n))]
+    [drk-add (nml nmr) (append (append (output-reverse-polish nml) (output-reverse-polish nmr)) (list (symbol->s-exp '+)))]
+    [drk-mult (nml nmr) (append (append (output-reverse-polish nml) (output-reverse-polish nmr)) (list (symbol->s-exp '*)))]
+    [drk-sub (nml nmr) (append (append (output-reverse-polish nml) (output-reverse-polish nmr)) (list (symbol->s-exp '-)))]
+    [drk-div (nml nmr) (append (append (output-reverse-polish nml) (output-reverse-polish nmr)) (list (symbol->s-exp '/)))]
+    [drk-exp (nml nmr) (append (append (output-reverse-polish nml) (output-reverse-polish nmr)) (list (symbol->s-exp '**)))]))
+
+(test (output-reverse-polish (drk-num 1)) (s-exp->list '(1)))
+(test (output-reverse-polish (drk-num 2)) (s-exp->list '(2)))
+(test (output-reverse-polish (drk-num 3)) (s-exp->list '(3)))
+(test (output-reverse-polish (drk-num 4)) (s-exp->list '(4)))
+(test (output-reverse-polish (drk-num 5)) (s-exp->list '(5)))
+(test (output-reverse-polish (drk-add (drk-num 5) (drk-num 7))) (s-exp->list '(5 7 +)))
+(test (output-reverse-polish (drk-add (drk-num 10) (drk-num 12))) (s-exp->list '(10 12 +)))
+(test (output-reverse-polish (drk-add (drk-num 3) (drk-num 4))) (s-exp->list '(3 4 +)))
+(test (output-reverse-polish (drk-sub (drk-num 4) (drk-num 5))) (s-exp->list '(4 5 -)))
+(test (output-reverse-polish (drk-mult (drk-num 2) (drk-num 6))) (s-exp->list '(2 6 *)))
+(test (output-reverse-polish (drk-mult (drk-num 10) (drk-num 2))) (s-exp->list '(10 2 *)))
+(test (output-reverse-polish (drk-add (drk-num 3) (drk-num 4))) (s-exp->list '(3 4 +)))
+(test (output-reverse-polish (drk-add (drk-mult (drk-num 3) (drk-num 4)) (drk-num 9))) (s-exp->list '(3 4 * 9 +)))
+(test (output-reverse-polish (drk-sub (drk-num 5) (drk-add (drk-num 6) (drk-num 7)))) (s-exp->list '(5 6 7 + -)))
+(test (output-reverse-polish (drk-add (drk-num 10) (drk-add (drk-num 1) (drk-num 2)))) (s-exp->list '(10 1 2 + +)))
+(test (output-reverse-polish (drk-add (drk-mult (drk-num 3) (drk-num 4)) (drk-num 9))) (s-exp->list '(3 4 * 9 +)))
+(test (output-reverse-polish (drk-add (drk-mult (drk-num 3) (drk-num 4)) (drk-num 9))) (s-exp->list '(3 4 * 9 +)))
+
+"Example outputs"
+(output-reverse-polish (drk-num 7))
+(output-reverse-polish (drk-add (drk-num 3) (drk-num 4)))
+(output-reverse-polish (drk-mult (drk-num 3) (drk-num 4)))
+(output-reverse-polish (drk-add (drk-mult (drk-num 3) (drk-num 4)) (drk-num 9)))
+(output-reverse-polish (drk-mult (drk-num 3) (drk-add (drk-num 4) (drk-num 9))))
+
+"Parser -> reverse polish output" 
+(output-reverse-polish (parse-prefix '(+ 99 (* 5 8))))
+"Parser -> evaluation" 
+(eval (parse-prefix '(+ 99 (* 5 8))))
+
+;unparser-infix
+;Contract 
+;drk -> s-expression
+;This function takes drk type object and unparses it into infix bracketed s-expression.
+(define (unparser-infix [expr : drk])
+  (type-case drk expr
+    [drk-num (n) (list (number->s-exp n))]
+      (drk-add (nml nmr) (append (append (unparser-infix nml) (list (symbol->s-exp '+))) (unparser-infix nmr)))
+      (drk-mult (nml nmr) (append (append (unparser-infix nml) (list (symbol->s-exp '*))) (unparser-infix nmr)))
+      (drk-sub (nml nmr) (append (append (unparser-infix nml) (list (symbol->s-exp '-))) (unparser-infix nmr)))
+      (drk-div (nml nmr) (append (append (unparser-infix nml) (list (symbol->s-exp '/))) (unparser-infix nmr)))
+      (drk-exp (nml nmr) (append (append (unparser-infix nml) (list (symbol->s-exp '**))) (unparser-infix nmr)))))
+
+;test
+
+(test (unparser-infix (drk-num 1)) (s-exp->list '(1)))
+(test (unparser-infix (drk-num 2)) (s-exp->list '(2)))
+(test (unparser-infix (drk-num 3)) (s-exp->list '(3)))
+(test (unparser-infix (drk-num 4)) (s-exp->list '(4)))
+(test (unparser-infix (drk-num 5)) (s-exp->list '(5)))
+(test (unparser-infix (drk-add (drk-num 5) (drk-num 7))) (s-exp->list '(5 + 7)))
+(test (unparser-infix (drk-add (drk-num 3) (drk-num 6))) (s-exp->list '(3 + 6)))
+(test (unparser-infix (drk-add (drk-num 4) (drk-num 5))) (s-exp->list '(4 + 5)))
+
+;unparser-prefix
+;Contract 
+;AE -> s-expression
+;This function takes AE type object and unparses it into prefix bracketed s-expression.
+(define (unparser-prefix [expr : drk])
+  (type-case drk expr
+    [drk-num (n) (list (number->s-exp n))]
+    (drk-add (nml nmr) (append (list(symbol->s-exp '+)) (append (unparser-prefix nml) (unparser-prefix nmr))))
+    (drk-mult (nml nmr) (append (list(symbol->s-exp '*)) (append (unparser-prefix nml) (unparser-prefix nmr))))
+    (drk-sub (nml nmr) (append (list(symbol->s-exp '-)) (append (unparser-prefix nml) (unparser-prefix nmr))))
+    (drk-div (nml nmr) (append (list(symbol->s-exp '/)) (append (unparser-prefix nml) (unparser-prefix nmr))))
+    (drk-exp (nml nmr) (append (list(symbol->s-exp '**)) (append (unparser-prefix nml) (unparser-prefix nmr))))))
+
+;test
+
+(test (unparser-prefix (drk-num 1)) (s-exp->list '(1)))
+(test (unparser-prefix (drk-num 2)) (s-exp->list '(2)))
+(test (unparser-prefix (drk-num 3)) (s-exp->list '(3)))
+(test (unparser-prefix (drk-num 4)) (s-exp->list '(4)))
+(test (unparser-prefix (drk-num 5)) (s-exp->list '(5)))
+(test (unparser-prefix (drk-add (drk-num 3) (drk-num 4))) (s-exp->list '(+ 3 4)))
+(test (unparser-prefix (drk-add (drk-num 5) (drk-num 7))) (s-exp->list '(+ 5 7)))
+(test (unparser-prefix (drk-add (drk-num 4) (drk-num 9))) (s-exp->list '(+ 4 9)))
+
+
+;;-----------------------------------------------------------------------------------------------------------------------------------------------------
+
+; SUGAR LANGUAGE
+;;the sugary language
+
+(define-type drks
+  [num-drks (n : number)]
+  [plus-drks (l : drks) (r : drks)]
+  [mult-drks (l : drks) (r : drks)]
+  [bmin-drks (l : drks) (r : drks)] ;;can be expressed with plus and mult
+  [umin-drks (r : drks)]                      ;;can be expressed with plus and mult
+  [div-drks  (l : drks) (r : drks)])
+
+;;Desugar method
+;; drks -> drk
+;; convert sugary syntax into core language
+  
+  (define (desugar [sugar : drks]) : drk
+  (type-case drks sugar
+    [num-drks (n) (drk-num n)]
+    [plus-drks (l r) (drk-add
+                      (desugar l)
+                      (desugar r))]
+    [mult-drks (l r) (drk-add
+                      (desugar l)
+                      (desugar r))]
+    [bmin-drks (l r) (drk-add       ;;translates binary minus to addition of the neg of the second argument
+                      (desugar l)
+                      (drk-add
+                       (drk-num -1)
+                       (desugar r)))]
+    [umin-drks (v) (desugar (bmin-drks (num-drks 0) v))] ;;unary minus translates to subtracting the argument from 0
+    [div-drks (l r) (drk-div      ;;in the core language
+                     (desugar l) 
+                     (desugar r))]))
+
+;;testing desugar
+;; (drks-num 9) -> 9
+;; (plus-drks (num-drks 8) umin-drks (num-drks 5))
+;; (drk-add (drk-num 8) (drk-add (drk-num 0) (drk-mult (drk-num -1) (drk-num 5)
+;; (div-drks (num-drks 4) (num-drks 2)
+;; (drk-div (drk-num 4) (drk-num 2)
+
+    
+(test (desugar (num-drks 9)) (drk-num 9))
+(test (desugar (plus-drks (num-drks 8) (umin-drks (num-drks 5))))
+      (drk-add (drk-num 8) (drk-add (drk-num 0) (drk-add (drk-num -1) (drk-num 5)))))
+(test (desugar (div-drks (num-drks 4) (num-drks 2)))
+      (drk-div (drk-num 4) (drk-num 2)))
+
+;;-----------------------------------------------------------------------------------------------------------------------------------------------------
+
+;; Î»-expression grammar
+;; Î»-exp -> v
+;; Î»-exp -> (Î»-exp Î»-exp)
+;; Î»-exp -> (Î» v Î»-exp)
+;; where v is a symbol.
+
+;; Î»-exp is an abstract syntax grammar or a parse tree definition for
+;; - Î»-exp that defined above.
+
+(define-type Î»-exp
+  (Î»-sym (v : symbol))
+  (Î»-app (l : Î»-exp)(r : Î»-exp))
+  (Î»-def (v : symbol)(p : Î»-exp))
+  )
+;; Tests:
+(Î»-sym 'x)
+(Î»-app (Î»-sym 'x)(Î»-sym 'y))
+(Î»-def 'v (Î»-app (Î»-sym 'x)(Î»-sym 'y)))
+
+;; parse : s-exp -> Î»-exp
+;; Purpose : To transform given s-expression to corresponding
+(define (parseÎ» (sexp : s-expression)) : Î»-exp
+  (cond
+    [(s-exp-symbol? sexp)(Î»-sym (s-exp->symbol sexp))]
+    [(s-exp-list? sexp)
+     (let ([sexp-list (s-exp->list sexp)])
+       (cond
+         [(= 2 (length sexp-list))
+          (Î»-app (parseÎ» (first sexp-list))(parseÎ» (second sexp-list)))]
+         [(= 3 (length sexp-list))
+          (if (and (symbol=? 'Î» (s-exp->symbol (first sexp-list)))
+                   (s-exp-symbol? (second sexp-list)))
+              (Î»-def (s-exp->symbol(second sexp-list))
+                     (parseÎ» (third sexp-list)))
+              (error 'parseÎ» "Not valid Î»-definition")
+              )]
+         [else (error 'parseÎ» "Not valid length Î»-exp")]
+         ))]
+    [else (error 'parseÎ» "Not valid Î»-exp")]
+    ))
+
+
+;; A set represented as a list.
+;; set-union : (listof symbol) (listof symbol) -> (listof symbol)
+;; Purpose : To find the union of two sets.
+(define (set-union (s1 : (listof symbol)) (s2 : (listof symbol))) : (listof symbol)
+  (foldr (lambda (x y)
+           (if (member x y)
+               y
+               (cons x y))) 
+         empty
+         (append s1 s2)))
+
+;; Tests:
+(test (set-union empty empty) empty)
+(test (set-union empty (list 'x)) (list 'x))
+(test (set-union (list 'x)(list 'x 'y)) (list 'x 'y))
+(test (set-union (list 'x) (list 'x)) (list 'x))
+
+;; set-difference : (listof symbol) (listof symbol) -> (listof symbol)
+;; Purpose : To find the set difference of two sets.
+(define (set-difference (s1 : (listof symbol))  (s2 : (listof symbol))) : (listof symbol)
+  (filter (lambda (x)
+            (not (member x s2)))
+          s1))
+
+;; Tests:
+(test (set-difference empty (list 'x)) empty)
+(test (set-difference (list 'x) empty) (list 'x))
+(test (set-difference (list 'x)(list 'x 'y)) empty)
+(test (set-difference (list 'x 'y)(list 'x))(list 'y))
+
+;; free-identifier : Î»-exp -> (listof symbol)
+;M = x â‡’ FI(M) = {x} (1)
+;M = (M1 M2) â‡’ FI(M) = FI(M1) âˆª FI(M2) (2)
+;M = (Î» x M1) â‡’ FI(M) = FI(M1) - {x} (3)
+;; Purpose : To find free identifiers in given Î» expression.
+(define (free-identifier (le : Î»-exp)) : (listof symbol)
+  (type-case Î»-exp le
+    (Î»-sym (v) (list v))
+    (Î»-app (l r)(set-union 
+                 (free-identifier l)
+                 (free-identifier r)))
+    (Î»-def (v p)(set-difference (free-identifier p)
+                                (list v)))
+    ))
+
+;; Tests:
+(test (free-identifier (parseÎ» (symbol->s-exp 'x))) (list 'x))
+(test (free-identifier (parseÎ» '(Î» x x))) empty)
+(test (free-identifier (parseÎ» '(Î» x y))) (list 'y))
+(test (free-identifier (parseÎ» '((Î» x y)(Î» y z)))) (list 'y 'z))
+(test (free-identifier (parseÎ» '((Î» f y)(Î» z z)))) (list 'y))
+(test (free-identifier (parseÎ» '(Î» x (Î» y (y x))))) empty)
+(test (free-identifier (parseÎ» '(Î» x (Î» y z)))) (list 'z))
+
+;; change-identifier : symbol symbol Î»-exp -> Î»-exp
+;; Purpose: A helper function for alpha transformer,
+;; - makes symbolic computation for changing given symbol in given Î»-expression.
+(define (change-identifier (what : symbol) (for : symbol) (in : Î»-exp)) : Î»-exp
+  (type-case Î»-exp in
+    (Î»-sym (v) (if (symbol=? v for) (Î»-sym what) in))
+    (Î»-app (l r) (Î»-app (change-identifier what for l)
+                        (change-identifier what for r)))
+    (Î»-def (v p) (Î»-def (if (symbol=? v for) what v)
+                        (change-identifier what for p)))
+    )
+  )
+
+;; Tests:
+(test (change-identifier 'x 'v (parseÎ» '(Î» v v)))(parseÎ» '(Î» x x)))
+(test (change-identifier 's 'y (Î»-sym 'x)) (Î»-sym 'x))
+(test (change-identifier 's 'x (parseÎ» '(Î» x x))) (parseÎ» '(Î» s s)))
+(test (change-identifier 's 'x (parseÎ» '((Î» x x)(Î» x x)))) 
+      (parseÎ» '((Î» s s)(Î» s s))))
+
+;; bounded-identifier : Î»-exp -> (listof symbol)
+;; Purpose : To find bounded identifiers in given Î» expression.
+(define (bounded-identifier (le : Î»-exp)) : (listof symbol)
+  (type-case Î»-exp le
+    (Î»-sym (v) empty)
+    (Î»-app (l r)(set-union 
+                 (bounded-identifier l)
+                 (bounded-identifier r)))
+    (Î»-def (v p)(set-union (bounded-identifier p)
+                           (list v)))
+    ))
+
+;; Tests:
+(test (bounded-identifier (parseÎ» (symbol->s-exp 'x))) empty)
+(test (bounded-identifier (parseÎ» '(Î» x x))) (list 'x))
+(test (bounded-identifier (parseÎ» '(Î» x y))) (list 'x))
+(test (bounded-identifier (parseÎ» '((Î» x y)(Î» y z)))) (list 'x 'y))
+(test (bounded-identifier (parseÎ» '((Î» f y)(Î» z z)))) (list 'f 'z))
+(test (bounded-identifier (parseÎ» '(Î» x (Î» y (y x))))) (list 'y 'x))
+(test (bounded-identifier (parseÎ» '(Î» x (Î» y z)))) (list 'y 'x))
+
+
+;; generate-identifier : Î»-exp -> symbol
+;; Purpose : To generate unpresented identifier.
+(define (generate-identifier (le : Î»-exp)) : symbol
+  (let ((generated-symbol 'gensym))
+    (if (or (member generated-symbol (bounded-identifier le))
+            (member generated-symbol (free-identifier le)))
+        (begin
+          (set! generated-symbol 
+                (string->symbol 
+                 (string-append (symbol->string generated-symbol) "*")))
+          generated-symbol)
+        generated-symbol)
+    )
+  )
+
+;; Test:
+(test (generate-identifier (parseÎ» '(Î» x (Î» y (Î» z x))))) 'gensym)
+(test (generate-identifier (parseÎ» '(Î» x (Î» gensym (Î» z x))))) 'gensym*)
+(test (generate-identifier (parseÎ» '(Î» x (Î» y (Î» z gensym))))) 'gensym*)
+
+;; alpha-transformer : Î»-exp -> Î»-exp
+;; Purpose : To apply alpha transformation on given Î»-expression
+;; (Î» x M) --> (Î» y [M:x=y])
+(define (alpha-transformer (s : symbol) (le : Î»-exp)) : Î»-exp
+  (type-case Î»-exp le
+    (Î»-sym (v) le)
+    (Î»-app (l r) (Î»-app (alpha-transformer s l)
+                        (alpha-transformer s r)))
+    (Î»-def (v p) (Î»-def s (change-identifier s v p)))
+    ))
+
+;; Test:
+(test (alpha-transformer 's (Î»-sym 'x)) (Î»-sym 'x))
+(test (alpha-transformer 's (parseÎ» '(Î» x x))) (parseÎ» '(Î» s s)))
+(test (alpha-transformer 's (parseÎ» '((Î» x x)(Î» x x)))) 
+      (parseÎ» '((Î» s s)(Î» s s))))
+
+
+;; substituter : Î»-exp  symbol  Î»-exp -> Î»-exp
+;; Purpose : Substitution is the act of replacing a name 
+;; - (in this case, that of the formal parameter) in an expression 
+;; - (in this case, the body of the function) with another expression 
+;; - (in this case, the actual parameter). [Directly from book.]
+;; Template:
+;; (define 
+;; (substituter [what : Î»-exp] [for : symbol] [in : Î»-exp]) : Î»-exp  
+;; <subst-body>
+;;)
+(define (substituter [what : Î»-exp] [for : symbol] [in : Î»-exp]) : Î»-exp 
+  (type-case Î»-exp in
+    (Î»-sym (v) (if (symbol=? v for)
+                   what
+                   in))
+    (Î»-app (l r) (Î»-app (substituter what for l)
+                        (substituter what for r)))
+    (Î»-def (v p) (if (symbol=? v for)
+                     in
+                     (if (not (member v (free-identifier what)))
+                         (Î»-def v (substituter what for p))
+                         (if (member for (free-identifier p))
+                             (substituter what for 
+                                          (alpha-transformer
+                                           (generate-identifier in) in))
+                             in))))
+    )
+  )
+
+;; beta-transformer : ((Î» x M) N) --> [M:x=N]
+;; beta-transformer : Î»-exp -> Î»-exp
+;; Purpose : Î»-calculus beta-reduction naive implementation.
+;; Template :
+;(define (beta-transform (le : Î»-exp)) : Î»-exp
+;  (type-case Î»-exp le
+;    (Î»-sym (v) ...)
+;    (Î»-app (l r) ... l ... r)
+;    (Î»-def (v p) ...v ...p)
+;    ))
+(define (beta-transformer (le : Î»-exp)) : Î»-exp
+  (type-case Î»-exp le
+    (Î»-sym (v) le)
+    (Î»-app (l r) 
+           (if (Î»-def? l)
+               (beta-transformer
+                (substituter r (Î»-def-v l) (Î»-def-p l)))
+               (if (Î»-def? (beta-transformer l))
+                   (beta-transformer 
+                    (Î»-app (beta-transformer l) (beta-transformer r)))
+                   (Î»-app (beta-transformer l) (beta-transformer r)))))
+    (Î»-def (v p) (Î»-def v (beta-transformer p)))))
+
+(test (beta-transformer (parseÎ» '((Î» x y) a)))(parseÎ» (symbol->s-exp 'y)))
+(test (beta-transformer (parseÎ» '((Î» x (a b)) k)))(parseÎ» '(a b)))
+(test (beta-transformer (parseÎ» '((Î» x (Î» x y)) k)))(parseÎ» '(Î» x y)))
+(test (beta-transformer (parseÎ» '((Î» x (Î» y x)) k)))(parseÎ» '(Î» y k)))
+
+;;-----------------------------------------------------------------------------------------------------------------------------------------------------
+
+;; expt : number number -> number
+;; Purpose: To calculate exponentiation of given two number, first number base and second is power.
+(define (expt (a : number) (b : number)) : number
+  (cond
+    ((= b 0) 1)
+    ((even? b) (sqr (expt a (/ b 2))))
+    (else (* a (expt a (- b 1))))))
+
+;; sqr : number -> number
+;; Purpose: To calculate square of given number.
+(define (sqr (a : number)) : number
+  (* a a))
+
+;; Pair is a well-known data structure in Lisp/Scheme family languages,
+;; - since we do not have a data structure in plai-type, 
+;; - this is an basic implementation of it.
+(define-type pair
+  (sym-op (sym : symbol)(op : (number number -> number))))
+
+;; A table for operations, 
+;; - by changing just this data structure,
+;; - you can add any binary operations.
+
+;; A list of pair(sym-op) as table of operations.
+;; Handycap of this is, 
+;; - it is complety depending on host language's operations.
+(define ops
+  (list
+   (sym-op '+ +)
+   (sym-op '* *)
+   ;; Several binary operations added as it seen below
+   (sym-op '- -)
+   (sym-op '/ /)
+   (sym-op '^ expt)
+   (sym-op 'custom (Î» (x y) (+ (* 2 x) y)))
+   ))
+
+;; get-op : symbol -> ((number number) -> number)
+;; Purpose : To obtain binary defined operation from operation definition table.
+(define (get-op (sym : symbol)) : (number number -> number)
+  (sym-op-op (assoc sym ops)))
+
+;; assoc : symbol (listof pair) -> pair
+;; Purpose : To associate given symbol with operation defined in a listof pairs.
+(define (assoc (s : symbol) (lp : (listof pair))) : pair
+  (let ((list-op (filter (lambda (x) (eq? s (sym-op-sym x))) lp)))
+    (if (empty? list-op)
+        (error 'assoc "Operation not defined")
+        (first list-op))))
+
+
+;; Binding is a data type to bind value with identifiers.
+(define-type Binding
+  [bind (name : symbol) (val : number)])
+
+;; Just an alias to keep it clean, wrapper around listof Bindings.
+(define-type-alias Environment (listof Binding))
+
+;; Empty environment.
+(define mt-env empty)
+
+;; Extending environment a wrapper around cons.
+(define extend-env cons)
+
+;; Example Environment.
+(define EnvNameSpace
+  (list
+   (bind 'x 5)
+   (bind 'y 6)
+   (bind 'z 7)
+   ))
+
+;; parseC : s-exp -> drkC
+;; Purpose : To parseC given s-exp to abstract syntax drkC
+;; Template : 
+;(define (parseC [s : s-expression]) : drkC
+;  (cond
+;    [n ...]
+;    [id ...]
+;    any unary or binary function
+;    ))
+
+(define (parseC [s : s-expression]) : drkC
+  (cond
+    [(s-exp-number? s) (drkC-num (s-exp->number s))]
+    [(s-exp-symbol? s) (drkC-id  (s-exp->symbol s))]
+    [(s-exp-list? s)
+     (let ([sl (s-exp->list s)])
+          (cond
+         [(= (length sl) 4)
+          (if (symbol=? 'ifzero (s-exp->symbol (first sl)))
+              (if-greater-than-zero (parseC (second sl))
+                                    (parseC (third sl))
+                                    (parseC (fourth sl)))
+              (error 'parse "invalid expression as input"))]
+         [(= (length sl) 3)
+          (binaryOpC (s-exp->symbol (first sl)) 
+                     (parseC (second sl)) (parseC (third sl)))]
+         [(= (length sl) 2)
+          (appC (s-exp->symbol (first sl)) (parseC (second sl)))]
+         [else (error 'parse "invalid list input")])
+       )]
+    [else (error 'parse "invalid input")]))
+
+
+;;test
+
+(test (parseC (number->s-exp 5))(drkC-num 5))
+(test (parseC (symbol->s-exp 'x))(drkC-id 'x))
+(test (parseC '(ifzero 4 5 6))(if-greater-than-zero (drkC-num 4)(drkC-num 5)(drkC-num 6)))
+(test (parseC '(ifzero 3 4 5))(if-greater-than-zero (drkC-num 3)(drkC-num 4)(drkC-num 5)))
+(test (parseC '(ifzero 1 3 5))(if-greater-than-zero (drkC-num 1)(drkC-num 3)(drkC-num 5)))
+(test (parseC '(ifzero 2 7 9))(if-greater-than-zero (drkC-num 2)(drkC-num 7)(drkC-num 9)))
+(test (parseC '(ifzero 7 8 9))(if-greater-than-zero (drkC-num 7)(drkC-num 8)(drkC-num 9)))
+(test (parseC '(ifzero 12 15 29))(if-greater-than-zero (drkC-num 12)(drkC-num 15)(drkC-num 29)))
+
+;; Function Definition Structure
+(define-type FunDefC
+  [fdC (name : symbol) (arg : symbol) (body : drkC)])
+
+; Example function definition namespace.
+(define FuncDefNameSpace
+  (list
+   (fdC 'sqr 'x (parseC '(* x x)))
+   (fdC 'sub1 'x (parseC '(+ x -1)))
+   (fdC 'neg 'x (parseC '(* x -1)))
+   (fdC 'double 'x (parseC '(+ x x)))
+   (fdC 'quadruple 'x (parseC '(double (double x))))
+   (fdC 'const5 '_ (parseC (number->s-exp 5)))
+   (fdC 'factorial 'n (parseC 
+                       '(ifzero n 1
+                                (* n (factorial (sub1 n))))))
+   (fdC 'fibonacci 'n (parseC 
+                       '(ifzero n 1
+                                (ifzero (- n 1) 1
+                                        (ifzero (- n 2) 1
+                                                (+ (fibonacci (- n 1))
+                                                   (fibonacci (- n 2))
+                                                   ))))))))
+
+;; get-fundef : symbol (listof FunDefC) -> FunDefC
+;; Purpose : To find given symbol's(function name/identifier) function definition
+;; - from function definition namespace.
+;; Template : Basic Structural Recursion
+; (define (get-fundef [n : symbol] [fds : (listof FunDefC)]) : FunDefC
+;  (cond
+;    [(empty? fds) ...]
+;    [else ...(first fds) ...(get-fundef (rest fds))])
+
+(define (get-fundef [n : symbol] [fds : (listof FunDefC)]) : FunDefC
+  (cond
+    [(empty? fds) (error 'get-fundef "reference to undefined function")]
+    [(cons? fds) (cond
+                   [(equal? n (fdC-name (first fds))) (first fds)]
+                   [else (get-fundef n (rest fds))])]))
+
+;; Tests:
+(test (get-fundef 'sub1 FuncDefNameSpace) 
+      (fdC 'sub1 'x (parseC '(+ x -1))))
+(test (get-fundef 'neg FuncDefNameSpace) 
+      (fdC 'neg 'x (parseC '(* x -1))))
+(test (get-fundef 'sqr FuncDefNameSpace) 
+      (fdC 'sqr 'x (parseC '(* x x))))
+
+;; lookup : symbol (listof Bindings) -> number
+;; Purpose : To find given symbol's value
+;; - from environment(listof bindings).
+;; Template : Basic Structural Recursion
+; (define (lookup [for : symbol] [env : Environment]) : number
+;  (cond
+;    [(empty? env) ...]
+;    [else ...(first env) ...(lookup (rest env))])
+
+(define (lookup [for : symbol] [env : Environment]) : number
+  (cond
+    [(empty? env) (error 'lookup "name not found")]
+    [else (cond
+            [(symbol=? for (bind-name (first env)))
+             (bind-val (first env))]
+            [else (lookup for (rest env))])]))
+
+;; Tests:
+(test (lookup 'x EnvNameSpace) 5)
+(test (lookup 'y EnvNameSpace) 6)
+(test (lookup 'z EnvNameSpace) 7)
+
+;; interp : drkC (listof FunDefC) -> number
+;; Purpose : To evaluate expressions to numbers.
+;; Template :
+; (define (interp [e : drkC] [fds : (listof FunDefC)]) : number
+;  (type-case drkC in
+;    [drkC-num (n) ...]
+;    [drkC-id (s) ...]
+;; if-greater-than-zero : drkC drkC drkC -> drkC
+;; an f statement that controls if first argument is zero 
+;; -- or not, if it is zero that returns second argunment,
+;; --- otherwise third argument. Partially lazy.
+
+(define (interpC [e : drkC] [env : Environment][fds : (listof FunDefC)]) : number
+  (type-case drkC e
+    [drkC-num (n) n]
+    [drkC-id (s) (lookup s env)]
+    [appC (f a) (local ([define fd (get-fundef f fds)])
+                  (interpC (fdC-body fd)
+                          (extend-env 
+                           (bind (fdC-arg fd)(interpC a env fds))
+                           mt-env)
+                          fds))]
+    [binaryOpC (op l r)((get-op op)
+                        (interpC l env fds)
+                        (interpC r env fds))]
+    [if-greater-than-zero (pred t f)
+                          (if (= 0 (interpC pred env fds))
+                              (interpC t env fds)
+                              (interpC f env fds))]
+    ))
+
+;test
+(test (interpC (parseC '(+ 10 (const5 10)))
+              mt-env
+              FuncDefNameSpace) 15)
+(test (interpC (parseC '(+ 10 (double (+ 1 2))))
+              mt-env
+              FuncDefNameSpace) 16)
+(test (interpC (parseC '(+ 10 (quadruple (+ 1 2))))
+              mt-env
+              FuncDefNameSpace) 22)
+
+;; eval : s-exp -> number
+;; Purpose : A wrapper function to evaluate s-exp through our language.
+(define (evalC (sexp : s-expression)) : number
+  ;(interp (parse sexp) empty))
+  (interpC (parseC sexp) mt-env FuncDefNameSpace))
+
+(test (evalC '(+ 3 4)) 7)
+(test (evalC '(* 3 4)) 12)
+(test (evalC '(sqr 4)) 16)
+(test (evalC '(neg 4)) -4)
+(test (evalC '(/ 3 4)) (/ 3 4))
+(test (evalC '(^ 3 4)) 81)
+(test (evalC '(- 3 4)) -1)
+(test (evalC '(custom 3 4)) 10)
+(test (evalC '(factorial 0)) 1)
+(test (evalC '(factorial 1)) 1)
+(test (evalC '(factorial 5)) 120)
+(test (evalC '(factorial 7)) 5040)
+(test (evalC '(fibonacci 0)) 1)
+(test (evalC '(fibonacci 1)) 1)
+(test (evalC '(fibonacci 2)) 1)
+(test (evalC '(fibonacci 3)) 2)
+(test (evalC '(fibonacci 4)) 3)
+(test (evalC '(fibonacci 5)) 5)
+(test (evalC '(fibonacci 6)) 8)
+(test (evalC '(fibonacci 7)) 13)
+(test (evalC '(fibonacci 8)) 21)
+(test (evalC '(fibonacci 9)) 34)
+
+;;-----------------------------------------------------------------------------------------------------------------------------------------------------
+
+;new identifier code from Chris Stephenson
+
+(define (quotient [a : number] [b : number]) : number
+  (/ (- a (remainder a b)) b))
+
+(define (number->string [x : number]) : string
+                       (if (zero? x) "" (string-append (number->string (quotient x 10))
+                                                       (list->string (list (string-ref "0123456789" (modulo x 10)))))))
+
+(define (chop-tail [l : (listof char)]) : (listof char)
+  (if (or (empty? l) (char=? (first l) #\- )) empty (cons (first l) (chop-tail (rest l )))))
+
+(define (clear-suffix-number [old : symbol]) : symbol
+  (string->symbol (list->string (chop-tail (string->list (symbol->string old))))))
+
+(define (add-new-suffix-number [old-chopped : symbol] [n : number]) : symbol
+  (string->symbol (string-append (string-append (symbol->string old-chopped) "-") (number->string n))))
+
+(define (new-ident-fun-maker [start : number]) : [symbol -> symbol]
+  (lambda ([old : symbol]) : symbol
+    (begin
+      (set! start (+ start 1))
+      (add-new-suffix-number (clear-suffix-number old) start))))
+
+(define make-new-ident (new-ident-fun-maker 0))
+
+
+;; use examples
+(make-new-ident 'a)
+(make-new-ident 'a-123)
+(make-new-ident 'hÄ±dÄ±r)
+(make-new-ident 'hÄ±dÄ±r-7)
